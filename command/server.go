@@ -503,16 +503,39 @@ func (c *ServerCommand) runRecoveryMode() int {
 	var sealConfigError error
 	var wrapper wrapping.Wrapper
 
-	if len(config.Seals) == 0 {
+	var configSeal *configutil.KMS
+	switch len(config.Seals) {
+	case 0:
 		config.Seals = append(config.Seals, &configutil.KMS{Type: wrapping.Shamir})
-	}
+		configSeal = config.Seals[0]
 
-	if len(config.Seals) > 1 {
-		c.UI.Error("Only one seal block is accepted in recovery mode")
+	case 1:
+		if config.Seals[0].Purpose == "config" {
+			config.Seals = append(config.Seals, &configutil.KMS{Type: wrapping.Shamir})
+			configSeal = config.Seals[1]
+		} else {
+			configSeal = config.Seals[0]
+		}
+
+	case 2:
+		foundConfig := -1
+		for i, seal := range config.Seals {
+			if seal.Purpose == "config" {
+				foundConfig = i
+				continue
+			}
+			configSeal = config.Seals[i]
+		}
+		if foundConfig == -1 {
+			c.UI.Error("Only one seal block (and optionally one config KMS block) is accepted in recovery mode")
+			return 1
+		}
+
+	default:
+		c.UI.Error("Only one seal block (and optionally one config KMS block) is accepted in recovery mode")
 		return 1
 	}
 
-	configSeal := config.Seals[0]
 	sealType := wrapping.Shamir
 	if !configSeal.Disabled && os.Getenv("VAULT_SEAL_TYPE") != "" {
 		sealType = os.Getenv("VAULT_SEAL_TYPE")
@@ -1037,11 +1060,19 @@ func (c *ServerCommand) Run(args []string) int {
 		case 1:
 			// If there's only one seal and it's disabled assume they want to
 			// migrate to a shamir seal and simply didn't provide it
-			if config.Seals[0].Disabled {
+			if config.Seals[0].Purpose == "config" {
+				// Treat like the 0 length case for runtime
 				config.Seals = append(config.Seals, &configutil.KMS{Type: wrapping.Shamir})
+			} else {
+				if config.Seals[0].Disabled {
+					config.Seals = append(config.Seals, &configutil.KMS{Type: wrapping.Shamir})
+				}
 			}
 		}
 		for _, configSeal := range config.Seals {
+			if configSeal.Purpose == "config" {
+				continue
+			}
 			sealType := wrapping.Shamir
 			if !configSeal.Disabled && os.Getenv("VAULT_SEAL_TYPE") != "" {
 				sealType = os.Getenv("VAULT_SEAL_TYPE")
