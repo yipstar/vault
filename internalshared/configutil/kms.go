@@ -97,9 +97,11 @@ func configureWrapper(configKMS *KMS, infoKeys *[]string, info *map[string]strin
 		return nil, err
 	}
 
-	for k, v := range kmsInfo {
-		*infoKeys = append(*infoKeys, k)
-		(*info)[k] = v
+	if infoKeys != nil && info != nil {
+		for k, v := range kmsInfo {
+			*infoKeys = append(*infoKeys, k)
+			(*info)[k] = v
+		}
 	}
 
 	return wrapper, nil

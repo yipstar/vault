@@ -85,19 +85,19 @@ func ParseConfig(d string) (*SharedConfig, error) {
 	}
 
 	if o := list.Filter("hsm"); len(o.Items) > 0 {
-		if err := parseKMS(&result, o, "hsm", 1); err != nil {
+		if err := parseKMS(&result, o, "hsm", 2); err != nil {
 			return nil, errwrap.Wrapf("error parsing 'hsm': {{err}}", err)
 		}
 	}
 
 	if o := list.Filter("seal"); len(o.Items) > 0 {
-		if err := parseKMS(&result, o, "seal", 2); err != nil {
+		if err := parseKMS(&result, o, "seal", 3); err != nil {
 			return nil, errwrap.Wrapf("error parsing 'seal': {{err}}", err)
 		}
 	}
 
 	if o := list.Filter("kms"); len(o.Items) > 0 {
-		if err := parseKMS(&result, o, "kms", 2); err != nil {
+		if err := parseKMS(&result, o, "kms", 3); err != nil {
 			return nil, errwrap.Wrapf("error parsing 'kms': {{err}}", err)
 		}
 	}
@@ -130,7 +130,7 @@ func ParseConfig(d string) (*SharedConfig, error) {
 
 func parseKMS(result *SharedConfig, list *ast.ObjectList, blockName string, maxKMS int) error {
 	if len(list.Items) > maxKMS {
-		return fmt.Errorf("only two or less %q blocks are permitted", blockName)
+		return fmt.Errorf("only %d or less %q blocks are permitted", maxKMS, blockName)
 	}
 
 	seals := make([]*KMS, 0, len(list.Items))

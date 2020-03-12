@@ -268,16 +268,16 @@ func (c *Config) Merge(c2 *Config) *Config {
 
 // LoadConfig loads the configuration at the given path, regardless if
 // its a file or directory.
-func LoadConfig(path string) (*Config, error) {
+func LoadConfig(path string, kms *configutil.KMS) (*Config, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
 
 	if fi.IsDir() {
-		return CheckConfig(LoadConfigDir(path))
+		return CheckConfig(LoadConfigDir(path, kms))
 	}
-	return CheckConfig(LoadConfigFile(path))
+	return CheckConfig(LoadConfigFile(path, kms))
 }
 
 func CheckConfig(c *Config, e error) (*Config, error) {
@@ -294,14 +294,27 @@ func CheckConfig(c *Config, e error) (*Config, error) {
 }
 
 // LoadConfigFile loads the configuration from the given file.
-func LoadConfigFile(path string) (*Config, error) {
+func LoadConfigFile(path string, kms *configutil.KMS) (*Config, error) {
 	// Read the file
 	d, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	conf, err := ParseConfig(string(d))
+	raw := string(d)
+
+	if kms != nil {
+		wrapper, err := configutil.ConfigureWrapper(kms, nil, nil, nil)
+		if err != nil {
+			return nil, err
+		}
+		raw, err = configutil.EncryptDecrypt(raw, true, wrapper)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	conf, err := ParseConfig(raw)
 	if err != nil {
 		return nil, err
 	}
@@ -429,7 +442,7 @@ func ParseConfig(d string) (*Config, error) {
 
 // LoadConfigDir loads all the configurations in the given directory
 // in alphabetical order.
-func LoadConfigDir(dir string) (*Config, error) {
+func LoadConfigDir(dir string, kms *configutil.KMS) (*Config, error) {
 	f, err := os.Open(dir)
 	if err != nil {
 		return nil, err
@@ -478,7 +491,7 @@ func LoadConfigDir(dir string) (*Config, error) {
 
 	result := NewConfig()
 	for _, f := range files {
-		config, err := LoadConfigFile(f)
+		config, err := LoadConfigFile(f, kms)
 		if err != nil {
 			return nil, errwrap.Wrapf(fmt.Sprintf("error loading %q: {{err}}", f), err)
 		}

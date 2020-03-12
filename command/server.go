@@ -93,6 +93,8 @@ type ServerCommand struct {
 	startedCh       chan (struct{}) // for tests
 	reloadedCh      chan (struct{}) // for tests
 
+	configKMS *configutil.KMS
+
 	// new stuff
 	flagConfigs            []string
 	flagLogLevel           string
@@ -372,20 +374,39 @@ func (c *ServerCommand) AutocompleteFlags() complete.Flags {
 }
 
 func (c *ServerCommand) parseConfig() (*server.Config, error) {
-	// Load the configuration
 	var config *server.Config
-	for _, path := range c.flagConfigs {
-		current, err := server.LoadConfig(path)
-		if err != nil {
-			return nil, errwrap.Wrapf(fmt.Sprintf("error loading configuration from %s: {{err}}", path), err)
-		}
 
-		if config == nil {
-			config = current
-		} else {
-			config = config.Merge(current)
+	// Load the configuration
+	loadConfig := func() error {
+		for _, path := range c.flagConfigs {
+			current, err := server.LoadConfig(path, c.configKMS)
+			if err != nil {
+				return errwrap.Wrapf(fmt.Sprintf("error loading configuration from %s: {{err}}", path), err)
+			}
+
+			if config == nil {
+				config = current
+			} else {
+				config = config.Merge(current)
+			}
+		}
+		return nil
+	}
+
+	if err := loadConfig(); err != nil {
+		return nil, err
+	}
+
+	for _, kms := range config.Seals {
+		if kms.Purpose == "config" {
+			// Load again now that it's in place
+			c.configKMS = kms
+			if err := loadConfig(); err != nil {
+				return nil, err
+			}
 		}
 	}
+
 	return config, nil
 }
 
@@ -1747,7 +1768,7 @@ CLUSTER_SYNTHESIS_COMPLETE:
 			var config *server.Config
 			var level log.Level
 			for _, path := range c.flagConfigs {
-				current, err := server.LoadConfig(path)
+				current, err := server.LoadConfig(path, c.configKMS)
 				if err != nil {
 					c.logger.Error("could not reload config", "path", path, "error", err)
 					goto RUNRELOADFUNCS
