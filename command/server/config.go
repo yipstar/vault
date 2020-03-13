@@ -283,8 +283,16 @@ func CheckConfig(c *Config, e error) (*Config, error) {
 		return c, e
 	}
 
-	if len(c.Seals) == 2 &&
-		(c.Seals[0].Disabled && c.Seals[1].Disabled || !c.Seals[0].Disabled && !c.Seals[1].Disabled) {
+	nonConfigSeals := make([]*configutil.KMS, 0, len(c.Seals))
+	for _, kms := range c.Seals {
+		if len(kms.Purpose) == 1 && kms.Purpose[0] == "config" {
+			continue
+		}
+		nonConfigSeals = append(nonConfigSeals, kms)
+	}
+
+	if len(nonConfigSeals) == 2 &&
+		(nonConfigSeals[0].Disabled && nonConfigSeals[1].Disabled || !nonConfigSeals[0].Disabled && !nonConfigSeals[1].Disabled) {
 		return nil, errors.New("seals: two seals provided but both are disabled or neither are disabled")
 	}
 
