@@ -41,7 +41,10 @@ func (c *OperatorConfigEncryptDecryptCommand) Help() string {
 Usage: vault operator config %s [options] [args]
 
   %s sensitive values in a Vault configuration file. These values must be marked
-  with {{%s()}} as appropriate.
+  with {{%s()}} as appropriate. This can only be used with string parameters, and
+  the markers must be inside the quote marks delimiting the string; as an example:
+
+      foo = "{{encrypt(bar)}}"
 
   By default this will print the new configuration out. To overwrite into the same
   file use the -overwrite flag.
