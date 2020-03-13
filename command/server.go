@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -39,6 +40,7 @@ import (
 	"github.com/hashicorp/vault/sdk/helper/jsonutil"
 	"github.com/hashicorp/vault/sdk/helper/logging"
 	"github.com/hashicorp/vault/sdk/helper/mlock"
+	"github.com/hashicorp/vault/sdk/helper/strutil"
 	"github.com/hashicorp/vault/sdk/helper/useragent"
 	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/hashicorp/vault/sdk/physical"
@@ -398,12 +400,16 @@ func (c *ServerCommand) parseConfig() (*server.Config, error) {
 	}
 
 	for _, kms := range config.Seals {
-		if kms.Purpose == "config" {
-			// Load again now that it's in place
-			c.configKMS = kms
-			if err := loadConfig(); err != nil {
-				return nil, err
+		if strutil.StrListContains(kms.Purpose, "config") {
+			if c.configKMS != nil {
+				return nil, errors.New("only one config KMS allowed")
 			}
+			c.configKMS = kms
+		}
+	}
+	if c.configKMS != nil {
+		if err := loadConfig(); err != nil {
+			return nil, err
 		}
 	}
 
@@ -510,7 +516,8 @@ func (c *ServerCommand) runRecoveryMode() int {
 		configSeal = config.Seals[0]
 
 	case 1:
-		if config.Seals[0].Purpose == "config" {
+		// If it's only used for config, we need to create a shamir one
+		if len(config.Seals[0].Purpose) == 1 && config.Seals[0].Purpose[0] == "config" {
 			config.Seals = append(config.Seals, &configutil.KMS{Type: wrapping.Shamir})
 			configSeal = config.Seals[1]
 		} else {
@@ -518,17 +525,19 @@ func (c *ServerCommand) runRecoveryMode() int {
 		}
 
 	case 2:
-		foundConfig := -1
 		for i, seal := range config.Seals {
-			if seal.Purpose == "config" {
-				foundConfig = i
-				continue
+			if strutil.StrListContains(seal.Purpose, "config") {
+				if len(seal.Purpose) == 1 {
+					// Keep looking, this block only for config
+					continue
+				}
+				// Otherwise, this is meant for more than just config, but we
+				// also have another block, and we don't support more than one
+				// config-purpose seal, so bail
+				c.UI.Error("Only one seal block (and optionally one config KMS block) is accepted in recovery mode")
+				return 1
 			}
 			configSeal = config.Seals[i]
-		}
-		if foundConfig == -1 {
-			c.UI.Error("Only one seal block (and optionally one config KMS block) is accepted in recovery mode")
-			return 1
 		}
 
 	default:
@@ -1058,19 +1067,20 @@ func (c *ServerCommand) Run(args []string) int {
 		case 0:
 			config.Seals = append(config.Seals, &configutil.KMS{Type: wrapping.Shamir})
 		case 1:
-			// If there's only one seal and it's disabled assume they want to
-			// migrate to a shamir seal and simply didn't provide it
-			if config.Seals[0].Purpose == "config" {
-				// Treat like the 0 length case for runtime
+			// If the seal is only marked for config, treat like the zero
+			// length case for runtime
+			if len(config.Seals[0].Purpose) == 1 && config.Seals[0].Purpose[0] == "config" {
 				config.Seals = append(config.Seals, &configutil.KMS{Type: wrapping.Shamir})
 			} else {
+				// If there's only one seal and it's disabled assume they want to
+				// migrate to a shamir seal and simply didn't provide it
 				if config.Seals[0].Disabled {
 					config.Seals = append(config.Seals, &configutil.KMS{Type: wrapping.Shamir})
 				}
 			}
 		}
 		for _, configSeal := range config.Seals {
-			if configSeal.Purpose == "config" {
+			if len(configSeal.Purpose) == 1 && configSeal.Purpose[0] == "config" {
 				continue
 			}
 			sealType := wrapping.Shamir
