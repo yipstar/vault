@@ -376,40 +376,41 @@ func (c *ServerCommand) AutocompleteFlags() complete.Flags {
 }
 
 func (c *ServerCommand) parseConfig() (*server.Config, error) {
-	var config *server.Config
+	if len(c.flagConfigs) == 0 {
+		return server.NewConfig(), nil
+	}
 
-	// Load the configuration
-	loadConfig := func() error {
-		for _, path := range c.flagConfigs {
-			current, err := server.LoadConfig(path, c.configKMS)
-			if err != nil {
-				return errwrap.Wrapf(fmt.Sprintf("error loading configuration from %s: {{err}}", path), err)
-			}
+	var kmses []*configutil.KMS
 
-			if config == nil {
-				config = current
-			} else {
-				config = config.Merge(current)
-			}
+	for _, path := range c.flagConfigs {
+		ks, err := configutil.LoadConfigKMSes(path)
+		if err != nil {
+			return nil, fmt.Errorf("error checking for config KMS block at path %s: %w", path, err)
 		}
-		return nil
+		kmses = append(kmses, ks...)
 	}
 
-	if err := loadConfig(); err != nil {
-		return nil, err
-	}
-
-	for _, kms := range config.Seals {
+	for _, kms := range kmses {
 		if strutil.StrListContains(kms.Purpose, "config") {
 			if c.configKMS != nil {
-				return nil, errors.New("only one config KMS allowed")
+				return nil, errors.New("only one seal/kms block marked for \"config\" purpose is allowed")
 			}
 			c.configKMS = kms
 		}
 	}
-	if c.configKMS != nil {
-		if err := loadConfig(); err != nil {
-			return nil, err
+
+	var config *server.Config
+	// Load the configuration
+	for _, path := range c.flagConfigs {
+		current, err := server.LoadConfig(path, c.configKMS)
+		if err != nil {
+			return nil, errwrap.Wrapf(fmt.Sprintf("error loading configuration from %s: {{err}}", path), err)
+		}
+
+		if config == nil {
+			config = current
+		} else {
+			config = config.Merge(current)
 		}
 	}
 

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -28,9 +29,6 @@ type Config struct {
 	HAStorage *Storage `hcl:"-"`
 
 	ServiceRegistration *ServiceRegistration `hcl:"-"`
-
-	Seals   []*configutil.KMS   `hcl:"-"`
-	Entropy *configutil.Entropy `hcl:"-"`
 
 	CacheSize                int         `hcl:"cache_size"`
 	DisableCache             bool        `hcl:"-"`
@@ -308,6 +306,10 @@ func LoadConfigFile(path string, kms *configutil.KMS) (*Config, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		wrapper.Init(context.Background())
+		defer wrapper.Finalize(context.Background())
+
 		raw, err = configutil.EncryptDecrypt(raw, true, true, wrapper)
 		if err != nil {
 			return nil, err
