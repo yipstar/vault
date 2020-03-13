@@ -22,18 +22,38 @@ telemetry {
 }
 `
 
+	finalStr := `
+storage "consul" {
+	api_key = "foobar"
+}
+
+telemetry {
+	some_param = "something"
+	circonus_api_key = "barfoo"
+}
+`
+
 	reverser := new(reversingWrapper)
-	out, err := EncryptDecrypt(rawStr, false, reverser)
+	out, err := EncryptDecrypt(rawStr, false, false, reverser)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	decOut, err := EncryptDecrypt(out, true, reverser)
+	decOut, err := EncryptDecrypt(out, true, false, reverser)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if decOut != rawStr {
+		t.Fatal(decOut)
+	}
+
+	decOut, err = EncryptDecrypt(out, true, true, reverser)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if decOut != finalStr {
 		t.Fatal(decOut)
 	}
 }

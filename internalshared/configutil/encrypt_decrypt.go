@@ -17,17 +17,22 @@ var (
 	decryptRegex = regexp.MustCompile(`{{decrypt\(.*\)}}`)
 )
 
-func EncryptDecrypt(rawStr string, decrypt bool, wrapper wrapping.Wrapper) (string, error) {
+func EncryptDecrypt(rawStr string, decrypt, strip bool, wrapper wrapping.Wrapper) (string, error) {
 	var locs [][]int
 	raw := []byte(rawStr)
 	searchVal := "{{encrypt("
 	replaceVal := "{{decrypt("
+	suffixVal := ")}}"
 	if decrypt {
 		searchVal = "{{decrypt("
 		replaceVal = "{{encrypt("
 		locs = decryptRegex.FindAllIndex(raw, -1)
 	} else {
 		locs = encryptRegex.FindAllIndex(raw, -1)
+	}
+	if strip {
+		replaceVal = ""
+		suffixVal = ""
 	}
 
 	out := make([]byte, 0, len(rawStr)*2)
@@ -78,7 +83,7 @@ func EncryptDecrypt(rawStr string, decrypt bool, wrapper wrapping.Wrapper) (stri
 		}
 
 		// Append new value
-		out = append(out, []byte(fmt.Sprintf("%s%s)}}", replaceVal, finalVal))...)
+		out = append(out, []byte(fmt.Sprintf("%s%s%s", replaceVal, finalVal, suffixVal))...)
 		prevMaxLoc = match[1]
 	}
 	// At the end, append the rest

@@ -308,7 +308,7 @@ func LoadConfigFile(path string, kms *configutil.KMS) (*Config, error) {
 		if err != nil {
 			return nil, err
 		}
-		raw, err = configutil.EncryptDecrypt(raw, true, wrapper)
+		raw, err = configutil.EncryptDecrypt(raw, true, true, wrapper)
 		if err != nil {
 			return nil, err
 		}
