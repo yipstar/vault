@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -126,6 +127,15 @@ type LeaderJoinInfo struct {
 	// authentication during TLS
 	LeaderClientKey string `json:"leader_client_key"`
 
+	// TLSCAFile is the path the the TLS CA cert file
+	TLSCAFile string `json:"tls_ca_file"`
+
+	// TLSCAFile is the path the the TLS cert file
+	TLSCertFile string `json:"tls_cert_file"`
+
+	// TLSCAFile is the path the the TLS key file
+	TLSKeyFile string `json:"tls_key_file"`
+
 	// Retry indicates if the join process should automatically be retried
 	Retry bool `json:"-"`
 
@@ -151,17 +161,32 @@ func (b *RaftBackend) JoinConfig() ([]*LeaderJoinInfo, error) {
 		return nil, errors.New("invalid retry_join config")
 	}
 
+	var tlsErr error
 	for _, info := range leaderInfos {
-		info.Retry = true
-		var tlsConfig *tls.Config
-		var err error
-		if len(info.LeaderCACert) != 0 || len(info.LeaderClientCert) != 0 || len(info.LeaderClientKey) != 0 {
-			tlsConfig, err = tlsutil.ClientTLSConfig([]byte(info.LeaderCACert), []byte(info.LeaderClientCert), []byte(info.LeaderClientKey))
-			if err != nil {
-				return nil, errwrap.Wrapf(fmt.Sprintf("failed to create tls config to communicate with leader node %q: {{err}}", info.LeaderAPIAddr), err)
+		tlsConfigFileMap := make(map[string]string)
+		if info.TLSCAFile != "" {
+			tlsConfigFileMap["tls_ca_file"] = info.TLSCAFile
+		}
+		if info.TLSCertFile != "" {
+			tlsConfigFileMap["tls_cert_file"] = info.TLSCertFile
+		}
+		if info.TLSKeyFile != "" {
+			tlsConfigFileMap["tls_key_file"] = info.TLSKeyFile
+		}
+
+		// Parse the address to extract the host.
+		address, err := url.Parse(info.LeaderAPIAddr)
+		if err != nil {
+			return nil, err
+		}
+
+		// If the tlsConfigFileMap is not empty, then we parse via file paths
+		if len(tlsConfigFileMap) != 0 {
+			info.TLSConfig, tlsErr = tlsutil.SetupTLSConfig(tlsConfigFileMap, address.Host)
+			if tlsErr != nil {
+				return nil, errwrap.Wrapf(fmt.Sprintf("failed to create tls config to communicate with leader node %q: {{err}}", info.LeaderAPIAddr), tlsErr)
 			}
 		}
-		info.TLSConfig = tlsConfig
 	}
 
 	return leaderInfos, nil
